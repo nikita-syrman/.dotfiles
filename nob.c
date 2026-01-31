@@ -25,6 +25,8 @@ int main(int argc, char **argv) {
                   nob_temp_sprintf("%s/.emacs.d/lisp/fastc-mode.el", home));
     nob_copy_file("emacs/.emacs.d/lisp/fasm-mode.el",
                   nob_temp_sprintf("%s/.emacs.d/lisp/fasm-mode.el", home));
+    nob_copy_file("emacs/.emacs.d/lisp/casey-theme.el",
+                  nob_temp_sprintf("%s/.emacs.d/lisp/casey-theme.el", home));
 
     nob_log(NOB_INFO, "Done!");
     return 0;

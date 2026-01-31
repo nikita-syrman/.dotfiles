@@ -42,10 +42,66 @@
 (global-set-key (kbd "M-X") 'smex-major-mode-commands)
 (global-set-key (kbd "C-c C-c M-x") 'execute-extended-command)
 
-;;; Custom Modes
+;;; Custom Modes & Theme
 (add-to-list 'load-path "~/.emacs.d/lisp/")
+(add-to-list 'custom-theme-load-path "~/.emacs.d/lisp/")
 (require 'fastc-mode)
 (require 'fasm-mode)
+
+;;; Header/Source Switch (F12)
+(defun casey-find-corresponding-file ()
+  "Find the file that corresponds to this one."
+  (interactive)
+  (let ((corresponding nil)
+        (basename (file-name-sans-extension buffer-file-name)))
+    (cond ((string-match "\\.c$" buffer-file-name)
+           (setq corresponding (concat basename ".h")))
+          ((string-match "\\.cpp$" buffer-file-name)
+           (setq corresponding (concat basename ".h")))
+          ((string-match "\\.h$" buffer-file-name)
+           (if (file-exists-p (concat basename ".c"))
+               (setq corresponding (concat basename ".c"))
+             (setq corresponding (concat basename ".cpp")))))
+    (if corresponding
+        (find-file corresponding)
+      (error "No corresponding file found"))))
+
+(defun casey-find-corresponding-file-other-window ()
+  "Find the file that corresponds to this one in another window."
+  (interactive)
+  (let ((corresponding nil)
+        (basename (file-name-sans-extension buffer-file-name)))
+    (cond ((string-match "\\.c$" buffer-file-name)
+           (setq corresponding (concat basename ".h")))
+          ((string-match "\\.cpp$" buffer-file-name)
+           (setq corresponding (concat basename ".h")))
+          ((string-match "\\.h$" buffer-file-name)
+           (if (file-exists-p (concat basename ".c"))
+               (setq corresponding (concat basename ".c"))
+             (setq corresponding (concat basename ".cpp")))))
+    (if corresponding
+        (find-file-other-window corresponding)
+      (error "No corresponding file found"))))
+
+(global-set-key (kbd "<f12>") 'casey-find-corresponding-file)
+(global-set-key (kbd "M-<f12>") 'casey-find-corresponding-file-other-window)
+
+;;; TODO/NOTE Highlighting
+(defface todo-face
+  '((t (:foreground "red" :weight bold)))
+  "Face for TODO keywords.")
+
+(defface note-face
+  '((t (:foreground "green" :weight bold)))
+  "Face for NOTE keywords.")
+
+(defun add-todo-note-keywords ()
+  "Add TODO and NOTE keyword highlighting."
+  (font-lock-add-keywords nil
+    '(("\\<\\(TODO\\)\\>" 1 'todo-face prepend)
+      ("\\<\\(NOTE\\)\\>" 1 'note-face prepend))))
+
+(add-hook 'prog-mode-hook 'add-todo-note-keywords)
 
 ;;; Compilation
 (require 'ansi-color)
@@ -53,7 +109,7 @@
 
 ;;; Custom (auto-generated)
 (custom-set-variables
- '(custom-enabled-themes '(gruber-darker))
+ '(custom-enabled-themes '(casey))
  '(custom-safe-themes
    '("09276f492e8e604d9a0821ef82f27ce58b831f90f49f986b4d93a006c12dbcdb"
      "e13beeb34b932f309fb2c360a04a460821ca99fe58f69e65557d6c1b10ba18c7"
