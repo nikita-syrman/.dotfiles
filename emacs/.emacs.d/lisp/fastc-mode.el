@@ -146,19 +146,36 @@
       trimmed)))
 
 (defun fastc--is-braceless-control-p (line)
-  "Check if LINE is a braceless control statement (if/for/while/else/do)."
+  "Check if LINE is a braceless control statement (if/for/while/else/do).
+The line must end with ) to be a complete condition."
   (when line
-    (let ((trimmed (fastc--strip-trailing-backslash line)))
-      (and (string-match-p "^\\s-*\\(if\\|for\\|while\\|else\\s+if\\|else\\|do\\)\\b" trimmed)
+    (let ((trimmed (string-trim (fastc--strip-trailing-backslash line))))
+      (and (string-match-p "^\\(if\\|for\\|while\\|else\\s+if\\|else\\|do\\)\\b" trimmed)
+           (string-suffix-p ")" trimmed)
            (not (string-suffix-p "{" trimmed))
            (not (string-suffix-p ";" trimmed))))))
+
+(defun fastc--ends-braceless-control-p ()
+  "Check if current line ends a braceless control condition.
+Returns the indentation of the control statement, or nil.
+Works for both single-line and multi-line conditions."
+  (save-excursion
+    (end-of-line)
+    (skip-chars-backward " \t\\\\")
+    (when (eq (char-before) ?\))
+      (ignore-errors
+        (backward-list)
+        (let ((opener-line (string-trim (fastc--strip-trailing-backslash
+                                         (thing-at-point 'line t)))))
+          (when (string-match-p "^\\(if\\|for\\|while\\|else\\s+if\\|else\\|do\\)\\b" opener-line)
+            (current-indentation)))))))
 
 (defun fastc--unclosed-paren-column ()
   "Return column to align to if inside unclosed parentheses, or nil.
 Uses `syntax-ppss` to find unclosed parens, ignoring those in strings/comments.
 Returns column after the innermost unclosed `(`, or paren-col + indent-level
 if nothing follows the paren on that line.
-Only aligns when previous line ends with `,` or `(' (actively continuing a call)."
+Only aligns when previous line ends with continuation chars (comma, paren, &&, ||)."
   (save-excursion
     (beginning-of-line)
     (let* ((ppss (syntax-ppss))
@@ -167,13 +184,17 @@ Only aligns when previous line ends with `,` or `(' (actively continuing a call)
       (when (and (> paren-depth 0)
                  innermost-paren-pos
                  (eq (char-after innermost-paren-pos) ?\())
-        ;; Check that previous line ends with , or ( (continuing a call)
-        (let ((prev-end-char (save-excursion
-                               (forward-line -1)
-                               (end-of-line)
-                               (skip-chars-backward " \t\\\\")
-                               (char-before))))
-          (when (memq prev-end-char '(?, ?\())
+        ;; Check that previous line ends with continuation char
+        ;; Include ; for for-loop parts (safe because we already checked paren depth)
+        (let ((prev-continues (save-excursion
+                                (forward-line -1)
+                                (end-of-line)
+                                (skip-chars-backward " \t\\\\")
+                                (or (memq (char-before) '(?, ?\( ?\;))
+                                    (and (>= (- (point) 2) (point-min))
+                                         (string-match-p "\\(&&\\|||\\)$"
+                                                         (buffer-substring (- (point) 2) (point))))))))
+          (when prev-continues
             (save-excursion
               (goto-char innermost-paren-pos)
               (let ((paren-col (current-column)))
@@ -225,7 +246,16 @@ Only aligns when previous line ends with `,` or `(' (actively continuing a call)
 
          ;; } decreases indent
          ((string-prefix-p "}" (string-trim-left cur-line))
-          (max (- prev-indent indent-len) 0))
+          (let ((base (save-excursion
+                        (forward-line -1)
+                        (end-of-line)
+                        (skip-chars-backward " \t\\\\")
+                        (when (eq (char-before) ?\;) (backward-char))
+                        (when (eq (char-before) ?\))
+                          (ignore-errors
+                            (backward-list)
+                            (current-indentation))))))
+            (max (- (or base prev-indent) indent-len) 0)))
 
          ;; Braceless control statement - indent next line
          ((fastc--is-braceless-control-p prev-line)
@@ -234,14 +264,29 @@ Only aligns when previous line ends with `,` or `(' (actively continuing a call)
          ;; 'else' after braceless if body - align with the if
          ((and (string-match-p "^\\s-*else\\b" (string-trim-left cur-line))
                prev-prev
-               (fastc--is-braceless-control-p (car prev-prev)))
-          (cdr prev-prev))
+               (or (fastc--is-braceless-control-p (car prev-prev))
+                   (save-excursion
+                     (forward-line -2)
+                     (fastc--ends-braceless-control-p))))
+          (or (save-excursion
+                (forward-line -2)
+                (fastc--ends-braceless-control-p))
+              (cdr prev-prev)))
 
          ;; After body of braceless control - dedent
          ((and prev-prev
-               (fastc--is-braceless-control-p (car prev-prev))
-               (not (fastc--is-braceless-control-p prev-line)))
-          (cdr prev-prev))
+               (or (fastc--is-braceless-control-p (car prev-prev))
+                   (save-excursion
+                     (forward-line -2)
+                     (fastc--ends-braceless-control-p)))
+               (not (fastc--is-braceless-control-p prev-line))
+               (not (save-excursion
+                      (forward-line -1)
+                      (fastc--ends-braceless-control-p))))
+          (or (save-excursion
+                (forward-line -2)
+                (fastc--ends-braceless-control-p))
+              (cdr prev-prev)))
 
          ;; case/label colon handling
          ((string-suffix-p ":" prev-line)
@@ -264,18 +309,23 @@ Only aligns when previous line ends with `,` or `(' (actively continuing a call)
           0)
 
          ;; After closing a multi-line paren, return to opener's indentation
-         ((let ((base-indent
-                 (save-excursion
-                   (forward-line -1)
-                   (end-of-line)
-                   (skip-chars-backward " \t\\\\")
-                   (when (eq (char-before) ?\;) (backward-char))
-                   (when (eq (char-before) ?\))
-                     ;; Point is right after ), backward-list jumps to matching (
-                     (ignore-errors
-                       (backward-list)
-                       (current-indentation))))))
-            base-indent))
+         ;; (or opener's indent + indent-len if it's a braceless control)
+         ((let ((control-indent (save-excursion
+                                  (forward-line -1)
+                                  (fastc--ends-braceless-control-p))))
+            (when control-indent
+              (+ control-indent indent-len))))
+
+         ;; After closing a regular multi-line paren (not control), return to base
+         ((save-excursion
+            (forward-line -1)
+            (end-of-line)
+            (skip-chars-backward " \t\\\\")
+            (when (eq (char-before) ?\;) (backward-char))
+            (when (eq (char-before) ?\))
+              (ignore-errors
+                (backward-list)
+                (current-indentation)))))
 
          ;; Default - keep previous indentation
          (t prev-indent))))))
@@ -347,6 +397,7 @@ Optimized for speed with lightweight indentation."
   :syntax-table fastc-mode-syntax-table
   (setq-local font-lock-defaults '(fastc--font-lock-keywords))
   (setq-local indent-line-function 'fastc-indent-line)
+  (setq-local indent-tabs-mode nil)
   (setq-local comment-start "// ")
   (setq-local comment-end ""))
 
