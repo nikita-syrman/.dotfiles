@@ -153,6 +153,41 @@
            (not (string-suffix-p "{" trimmed))
            (not (string-suffix-p ";" trimmed))))))
 
+(defun fastc--unclosed-paren-column ()
+  "Return column to align to if inside unclosed parentheses, or nil.
+Uses `syntax-ppss` to find unclosed parens, ignoring those in strings/comments.
+Returns column after the innermost unclosed `(`, or paren-col + indent-level
+if nothing follows the paren on that line.
+Only aligns when previous line ends with `,` or `(' (actively continuing a call)."
+  (save-excursion
+    (beginning-of-line)
+    (let* ((ppss (syntax-ppss))
+           (paren-depth (nth 0 ppss))
+           (innermost-paren-pos (nth 1 ppss)))
+      (when (and (> paren-depth 0)
+                 innermost-paren-pos
+                 (eq (char-after innermost-paren-pos) ?\())
+        ;; Check that previous line ends with , or ( (continuing a call)
+        (let ((prev-end-char (save-excursion
+                               (forward-line -1)
+                               (end-of-line)
+                               (skip-chars-backward " \t\\\\")
+                               (char-before))))
+          (when (memq prev-end-char '(?, ?\())
+            (save-excursion
+              (goto-char innermost-paren-pos)
+              (let ((paren-col (current-column)))
+                ;; Move past the opening paren
+                (forward-char 1)
+                ;; Skip whitespace to find first argument
+                (skip-chars-forward " \t")
+                (if (or (eolp)
+                        (eq (char-after) ?\\))
+                    ;; Nothing after paren on this line, use paren + indent
+                    (+ paren-col fastc-indent-level)
+                  ;; Align to first argument
+                  (current-column))))))))))
+
 ;;; Indentation Logic
 
 (defun fastc--desired-indentation ()
@@ -171,6 +206,9 @@
          ;; Preprocessor directives always at column 0
          ((string-match-p "^\\s-*#" cur-line)
           0)
+
+         ;; Align to unclosed parenthesis
+         ((fastc--unclosed-paren-column))
 
          ;; switch - don't indent the body directly
          ((string-match-p "^\\s-*switch\\s-*(.+)" prev-line)
@@ -224,6 +262,20 @@
                (not (fastc--line-ends-with-backslash-p prev-line-raw))
                (not (string-match-p "^\\s-*#" prev-line)))
           0)
+
+         ;; After closing a multi-line paren, return to opener's indentation
+         ((let ((base-indent
+                 (save-excursion
+                   (forward-line -1)
+                   (end-of-line)
+                   (skip-chars-backward " \t\\\\")
+                   (when (eq (char-before) ?\;) (backward-char))
+                   (when (eq (char-before) ?\))
+                     ;; Point is right after ), backward-list jumps to matching (
+                     (ignore-errors
+                       (backward-list)
+                       (current-indentation))))))
+            base-indent))
 
          ;; Default - keep previous indentation
          (t prev-indent))))))
