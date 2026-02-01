@@ -32,6 +32,7 @@
 ;;; Code:
 
 (require 'subr-x)
+(require 'cl-lib)
 
 ;;; Customization
 
@@ -324,7 +325,9 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
             (max (- (or base prev-indent) indent-len) 0)))
 
          ;; After }; (array/struct initializer close), return to base indent
-         ((string-match-p "};\\s-*$" prev-line)
+         ;; But only for multi-line initializers (unbalanced braces on prev-line)
+         ((and (string-match-p "};\\s-*$" prev-line)
+               (> (cl-count ?} prev-line) (cl-count ?{ prev-line)))
           (save-excursion
             (fastc--goto-prev-non-empty-line)
             ;; Find matching opening brace by counting depth

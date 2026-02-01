@@ -10,6 +10,7 @@
 (tool-bar-mode 0)
 (scroll-bar-mode 0)
 (fringe-mode 0)
+(setq-default line-spacing 0)
 
 ;; Line numbers (relative with absolute on current line)
 (setq display-line-numbers-type 'relative)
