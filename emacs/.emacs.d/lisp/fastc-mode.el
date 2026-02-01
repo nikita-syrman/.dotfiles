@@ -178,6 +178,31 @@ Works for both single-line and multi-line conditions."
           (when (string-match-p "^\\(if\\|for\\|while\\|else\\s+if\\|else\\|do\\)\\b" opener-line)
             (current-indentation)))))))
 
+(defun fastc--find-braceless-base-indent ()
+  "Find the base indent after exiting nested braceless control bodies.
+Goes back through prev-prev, and if that was a braceless control
+that was itself a body of another braceless control, keeps going
+until finding the outermost control's indent."
+  (save-excursion
+    (let ((result-indent nil))
+      ;; Go to prev-prev (the braceless control whose body just ended)
+      (fastc--goto-prev-non-empty-line)
+      (fastc--goto-prev-non-empty-line)
+      (let ((line (string-trim (fastc--strip-trailing-backslash
+                                (thing-at-point 'line t)))))
+        (when (or (fastc--is-braceless-control-p line)
+                  (fastc--ends-braceless-control-p))
+          (setq result-indent (current-indentation))
+          ;; Check if this control was itself a body of outer control
+          (while (and (fastc--goto-prev-non-empty-line)
+                      (let ((prev-line (string-trim (fastc--strip-trailing-backslash
+                                                     (thing-at-point 'line t)))))
+                        (and (or (fastc--is-braceless-control-p prev-line)
+                                 (fastc--ends-braceless-control-p))
+                             (< (current-indentation) result-indent))))
+            (setq result-indent (current-indentation)))))
+      result-indent)))
+
 (defun fastc--unclosed-paren-column ()
   "Return column to align to if inside unclosed parentheses, or nil.
 Uses `syntax-ppss` to find unclosed parens, ignoring those in strings/comments.
@@ -284,6 +309,7 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
               (cdr prev-prev)))
 
          ;; After body of braceless control - dedent
+         ;; Handles nested braceless controls by finding outermost control's indent
          ((and prev-prev
                (or (fastc--is-braceless-control-p (car prev-prev))
                    (save-excursion
@@ -294,11 +320,7 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
                (not (save-excursion
                       (fastc--goto-prev-non-empty-line)
                       (fastc--ends-braceless-control-p))))
-          (or (save-excursion
-                (fastc--goto-prev-non-empty-line)
-                (fastc--goto-prev-non-empty-line)
-                (fastc--ends-braceless-control-p))
-              (cdr prev-prev)))
+          (fastc--find-braceless-base-indent))
 
          ;; case/label colon handling
          ((string-suffix-p ":" prev-line)
