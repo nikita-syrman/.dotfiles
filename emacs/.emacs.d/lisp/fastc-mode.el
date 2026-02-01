@@ -188,19 +188,25 @@ until finding the outermost control's indent."
       ;; Go to prev-prev (the braceless control whose body just ended)
       (fastc--goto-prev-non-empty-line)
       (fastc--goto-prev-non-empty-line)
-      (let ((line (string-trim (fastc--strip-trailing-backslash
-                                (thing-at-point 'line t)))))
-        (when (or (fastc--is-braceless-control-p line)
-                  (fastc--ends-braceless-control-p))
-          (setq result-indent (current-indentation))
+      (let* ((line (string-trim (fastc--strip-trailing-backslash
+                                 (thing-at-point 'line t))))
+             (ends-control (fastc--ends-braceless-control-p)))
+        ;; Get the indent - use ends-control value for multi-line conditions
+        (when (or (fastc--is-braceless-control-p line) ends-control)
+          (setq result-indent (or ends-control (current-indentation)))
           ;; Check if this control was itself a body of outer control
           (while (and (fastc--goto-prev-non-empty-line)
-                      (let ((prev-line (string-trim (fastc--strip-trailing-backslash
-                                                     (thing-at-point 'line t)))))
-                        (and (or (fastc--is-braceless-control-p prev-line)
-                                 (fastc--ends-braceless-control-p))
-                             (< (current-indentation) result-indent))))
-            (setq result-indent (current-indentation)))))
+                      (let* ((prev-line (string-trim (fastc--strip-trailing-backslash
+                                                      (thing-at-point 'line t))))
+                             (prev-ends (fastc--ends-braceless-control-p))
+                             (prev-ctrl-indent (or prev-ends
+                                                   (and (fastc--is-braceless-control-p prev-line)
+                                                        (current-indentation)))))
+                        (when (and prev-ctrl-indent
+                                   (< prev-ctrl-indent result-indent))
+                          (setq result-indent prev-ctrl-indent)
+                          t)))  ;; continue loop
+            )))
       result-indent)))
 
 (defun fastc--unclosed-paren-column ()
