@@ -442,7 +442,7 @@ Optimized for speed with lightweight indentation."
   (setq-local comment-end ""))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.[hc]\\(pp\\)?\\'" . fastc-mode))
+(add-to-list 'auto-mode-alist '("\\.\\(c\\|h\\|cc\\|hh\\|cpp\\|hpp\\|cxx\\|hxx\\)\\'" . fastc-mode))
 
 (provide 'fastc-mode)
 
