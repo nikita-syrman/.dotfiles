@@ -15,6 +15,15 @@
 (setq display-line-numbers-type 'relative)
 (global-display-line-numbers-mode 1)
 
+;; Scale line numbers with text-scale (C-x C-+/-)
+(defun my/scale-line-numbers ()
+  (let ((h (if (bound-and-true-p text-scale-mode)
+               (expt text-scale-mode-step text-scale-mode-amount)
+             1.0)))
+    (dolist (face '(line-number line-number-current-line))
+      (face-remap-set-base face :height h))))
+(add-hook 'text-scale-mode-hook #'my/scale-line-numbers)
+
 ;; Whitespace visualization (spaces as dots)
 (setq whitespace-style '(face spaces space-mark))
 (setq whitespace-display-mappings
