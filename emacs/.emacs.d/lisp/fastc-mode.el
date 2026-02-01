@@ -155,6 +155,14 @@ The line must end with ) to be a complete condition."
            (not (string-suffix-p "{" trimmed))
            (not (string-suffix-p ";" trimmed))))))
 
+(defun fastc--goto-prev-non-empty-line ()
+  "Move to previous non-empty line. Return t if found, nil otherwise."
+  (forward-line -1)
+  (while (and (not (bobp))
+              (string-blank-p (thing-at-point 'line t)))
+    (forward-line -1))
+  (not (string-blank-p (thing-at-point 'line t))))
+
 (defun fastc--ends-braceless-control-p ()
   "Check if current line ends a braceless control condition.
 Returns the indentation of the control statement, or nil.
@@ -187,13 +195,13 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
         ;; Check that previous line ends with continuation char
         ;; Include ; for for-loop parts (safe because we already checked paren depth)
         (let ((prev-continues (save-excursion
-                                (forward-line -1)
-                                (end-of-line)
-                                (skip-chars-backward " \t\\\\")
-                                (or (memq (char-before) '(?, ?\( ?\;))
-                                    (and (>= (- (point) 2) (point-min))
-                                         (string-match-p "\\(&&\\|||\\)$"
-                                                         (buffer-substring (- (point) 2) (point))))))))
+                                (when (fastc--goto-prev-non-empty-line)
+                                  (end-of-line)
+                                  (skip-chars-backward " \t\\\\")
+                                  (or (memq (char-before) '(?, ?\( ?\;))
+                                      (and (>= (- (point) 2) (point-min))
+                                           (string-match-p "\\(&&\\|||\\)$"
+                                                           (buffer-substring (- (point) 2) (point)))))))))
           (when prev-continues
             (save-excursion
               (goto-char innermost-paren-pos)
@@ -247,14 +255,14 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
          ;; } decreases indent
          ((string-prefix-p "}" (string-trim-left cur-line))
           (let ((base (save-excursion
-                        (forward-line -1)
-                        (end-of-line)
-                        (skip-chars-backward " \t\\\\")
-                        (when (eq (char-before) ?\;) (backward-char))
-                        (when (eq (char-before) ?\))
-                          (ignore-errors
-                            (backward-list)
-                            (current-indentation))))))
+                        (when (fastc--goto-prev-non-empty-line)
+                          (end-of-line)
+                          (skip-chars-backward " \t\\\\")
+                          (when (eq (char-before) ?\;) (backward-char))
+                          (when (eq (char-before) ?\))
+                            (ignore-errors
+                              (backward-list)
+                              (current-indentation)))))))
             (max (- (or base prev-indent) indent-len) 0)))
 
          ;; Braceless control statement - indent next line
@@ -266,10 +274,12 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
                prev-prev
                (or (fastc--is-braceless-control-p (car prev-prev))
                    (save-excursion
-                     (forward-line -2)
+                     (fastc--goto-prev-non-empty-line)
+                     (fastc--goto-prev-non-empty-line)
                      (fastc--ends-braceless-control-p))))
           (or (save-excursion
-                (forward-line -2)
+                (fastc--goto-prev-non-empty-line)
+                (fastc--goto-prev-non-empty-line)
                 (fastc--ends-braceless-control-p))
               (cdr prev-prev)))
 
@@ -277,14 +287,16 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
          ((and prev-prev
                (or (fastc--is-braceless-control-p (car prev-prev))
                    (save-excursion
-                     (forward-line -2)
+                     (fastc--goto-prev-non-empty-line)
+                     (fastc--goto-prev-non-empty-line)
                      (fastc--ends-braceless-control-p)))
                (not (fastc--is-braceless-control-p prev-line))
                (not (save-excursion
-                      (forward-line -1)
+                      (fastc--goto-prev-non-empty-line)
                       (fastc--ends-braceless-control-p))))
           (or (save-excursion
-                (forward-line -2)
+                (fastc--goto-prev-non-empty-line)
+                (fastc--goto-prev-non-empty-line)
                 (fastc--ends-braceless-control-p))
               (cdr prev-prev)))
 
@@ -311,21 +323,21 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
          ;; After closing a multi-line paren, return to opener's indentation
          ;; (or opener's indent + indent-len if it's a braceless control)
          ((let ((control-indent (save-excursion
-                                  (forward-line -1)
-                                  (fastc--ends-braceless-control-p))))
+                                  (when (fastc--goto-prev-non-empty-line)
+                                    (fastc--ends-braceless-control-p)))))
             (when control-indent
               (+ control-indent indent-len))))
 
          ;; After closing a regular multi-line paren (not control), return to base
          ((save-excursion
-            (forward-line -1)
-            (end-of-line)
-            (skip-chars-backward " \t\\\\")
-            (when (eq (char-before) ?\;) (backward-char))
-            (when (eq (char-before) ?\))
-              (ignore-errors
-                (backward-list)
-                (current-indentation)))))
+            (when (fastc--goto-prev-non-empty-line)
+              (end-of-line)
+              (skip-chars-backward " \t\\\\")
+              (when (eq (char-before) ?\;) (backward-char))
+              (when (eq (char-before) ?\))
+                (ignore-errors
+                  (backward-list)
+                  (current-indentation))))))
 
          ;; Default - keep previous indentation
          (t prev-indent))))))
