@@ -155,6 +155,11 @@ The line must end with ) to be a complete condition."
            (not (string-suffix-p "{" trimmed))
            (not (string-suffix-p ";" trimmed))))))
 
+(defun fastc--is-comment-line-p (line)
+  "Check if LINE is a comment (starts with //)."
+  (when line
+    (string-match-p "^\\s-*//" line)))
+
 (defun fastc--goto-prev-non-empty-line ()
   "Move to previous non-empty line. Return t if found, nil otherwise."
   (forward-line -1)
@@ -271,7 +276,8 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
          ((fastc--unclosed-paren-column))
 
          ;; After line ending with = (string/initializer continuation)
-         ((string-match-p "=\\s-*$" prev-line)
+         ((and (string-match-p "=\\s-*$" prev-line)
+               (not (fastc--is-comment-line-p prev-line)))
           (+ prev-indent fastc-indent-level))
 
          ;; String literal continuation (prev ends with string, no semicolon)
@@ -317,6 +323,20 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
                               (current-indentation)))))))
             (max (- (or base prev-indent) indent-len) 0)))
 
+         ;; After }; (array/struct initializer close), return to base indent
+         ((string-match-p "};\\s-*$" prev-line)
+          (save-excursion
+            (fastc--goto-prev-non-empty-line)
+            ;; Find matching opening brace by counting depth
+            (let ((depth 1))
+              (while (and (> depth 0) (fastc--goto-prev-non-empty-line))
+                (let ((line (thing-at-point 'line t)))
+                  (when (string-match-p "}" line)
+                    (setq depth (1+ depth)))
+                  (when (string-match-p "{" line)
+                    (setq depth (1- depth)))))
+              (current-indentation))))
+
          ;; { after braceless control - don't indent (brace goes at control level)
          ((and (string-prefix-p "{" (string-trim-left cur-line))
                (or (fastc--is-braceless-control-p prev-line)
@@ -360,12 +380,14 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
                       (fastc--ends-braceless-control-p))))
           (fastc--find-braceless-base-indent))
 
-         ;; case/label colon handling
-         ((string-suffix-p ":" prev-line)
+         ;; case/label colon handling (not for comments)
+         ((and (string-suffix-p ":" prev-line)
+               (not (fastc--is-comment-line-p prev-line)))
           (if (string-suffix-p ":" cur-line)
               prev-indent
             (+ prev-indent indent-len)))
-         ((string-suffix-p ":" cur-line)
+         ((and (string-suffix-p ":" cur-line)
+               (not (fastc--is-comment-line-p cur-line)))
           (max (- prev-indent indent-len) 0))
 
          ;; First line after #define - indent
