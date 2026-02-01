@@ -27,19 +27,19 @@
  '(font-lock-comment-delimiter-face ((t (:foreground "#7D7D7D"))))
  '(font-lock-constant-face ((t (:foreground "#6B8E23"))))
  '(font-lock-doc-face ((t (:foreground "#7D7D7D"))))
- '(font-lock-function-name-face ((t (:foreground "#A04A2E"))))
+ '(font-lock-function-name-face ((t (:foreground "#CC7755"))))
  '(font-lock-keyword-face ((t (:foreground "#CD950C"))))
  '(font-lock-preprocessor-face ((t (:foreground "#DAB98F"))))
  '(font-lock-string-face ((t (:foreground "#6B8E23"))))
- '(font-lock-type-face ((t (:foreground "#A08563"))))
+ '(font-lock-type-face ((t (:foreground "#D4A86A"))))
  '(font-lock-variable-name-face ((t (:foreground "#A08563"))))
 
  ;; Special characters
  '(font-lock-warning-face ((t (:foreground "#FF0000"))))
  '(escape-glyph ((t (:foreground "#FF0000"))))
 
- ;; Macros
- '(font-lock-function-call-face ((t (:foreground "#A04A2E"))))
+ ;; Macros / function calls
+ '(font-lock-function-call-face ((t (:foreground "#CC7755"))))
 
  ;; Mode line
  '(mode-line ((t (:background "#262329" :foreground "#A0823B"))))
