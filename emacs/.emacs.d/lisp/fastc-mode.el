@@ -270,6 +270,27 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
          ;; Align to unclosed parenthesis
          ((fastc--unclosed-paren-column))
 
+         ;; After line ending with = (string/initializer continuation)
+         ((string-match-p "=\\s-*$" prev-line)
+          (+ prev-indent fastc-indent-level))
+
+         ;; String literal continuation (prev ends with string, no semicolon)
+         ((and (string-match-p "\"\\s-*$" prev-line)
+               (not (string-suffix-p ";" prev-line)))
+          prev-indent)
+
+         ;; After string block ends, return to base indent
+         ((and (string-match-p "^\\s-*\"" prev-line)  ; prev is standalone string
+               (string-suffix-p ";" prev-line)        ; ending the statement
+               (not (string-match-p "^\\s-*\"" cur-line))) ; current is not string
+          (save-excursion
+            (fastc--goto-prev-non-empty-line)
+            ;; Go back through string lines to find start
+            (while (and (string-match-p "^\\s-*\"" (thing-at-point 'line t))
+                        (fastc--goto-prev-non-empty-line)))
+            ;; Now we're at the line with = or the line before strings
+            (current-indentation)))
+
          ;; switch - don't indent the body directly
          ((string-match-p "^\\s-*switch\\s-*(.+)" prev-line)
           prev-indent)
@@ -295,6 +316,17 @@ Only aligns when previous line ends with continuation chars (comma, paren, &&, |
                               (backward-list)
                               (current-indentation)))))))
             (max (- (or base prev-indent) indent-len) 0)))
+
+         ;; { after braceless control - don't indent (brace goes at control level)
+         ((and (string-prefix-p "{" (string-trim-left cur-line))
+               (or (fastc--is-braceless-control-p prev-line)
+                   (save-excursion
+                     (fastc--goto-prev-non-empty-line)
+                     (fastc--ends-braceless-control-p))))
+          (or (save-excursion
+                (fastc--goto-prev-non-empty-line)
+                (fastc--ends-braceless-control-p))
+              prev-indent))
 
          ;; Braceless control statement - indent next line
          ((fastc--is-braceless-control-p prev-line)
